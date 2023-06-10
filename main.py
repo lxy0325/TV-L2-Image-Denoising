@@ -66,7 +66,7 @@ def ROFtv(u0, N=300, sigma=0.002, deltaT=1e-6, show=False):
 
 if __name__ == "__main__":
     fileName = "input.png"
-    N = 50
+    N = 300
     sigma2 = 0.002
     deltaT = 1e-6
     show = False
