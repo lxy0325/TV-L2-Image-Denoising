@@ -201,3 +201,10 @@ def tv_norm(image, eps=1e-8):
     grad_mag = np.sqrt(x_diff**2 + y_diff**2 + eps)
     tv = np.sum(grad_mag)
     return tv
+
+"""The following uses Signal to Noise ratio for ending of iteration."""
+def signaltonoise(a, axis=None, ddof=0):
+    a = np.asanyarray(a)
+    m = a.mean(axis)
+    sd = a.std(axis=axis, ddof=ddof)
+    return np.where(sd == 0, 0, m/sd)
