@@ -5,13 +5,13 @@ from scipy.fftpack import fft2, ifft2
 import time
 from utils.utils import D
 from utils.utils import Div
-from utils.utils import tv_norm
+from utils.utils import tv_norm, signaltonoise
 
 """
 We give different convergence criteria for color images due to the general failure of implementing
 the usual normalized_norm<eps one. (image channel size would change eps value drastically.) 
-We compute the TV for each iteration and break from iteration 
-once the TV starts to increase. According to:
+We compute the TV/SNR for each iteration and break from iteration 
+once the TV/SNR starts to increase/decrease. According to:
 http://www.corc.ieor.columbia.edu/reports/techreports/tr-2004-03.pdf
 """
 
@@ -37,7 +37,7 @@ def x_solver(z, u, u0, rho, deno):
 """implements ADMM for TV-L^2."""
 def ADMM_3D(u0,lambd, N, \
               tv_type = "anisotropic",
-                rho = 0.05, mu = 10, tau = 2, ground_truth = None, eps = 1e-10, channel_axis = None):
+                rho = 0.05, mu = 10, tau = 2, ground_truth = None, eps = 1e-3, channel_axis = None):
     # note: when ground truth is nonzero, eps is used to
     # ensure the quality of output image
     m, n, c = u0.shape
@@ -78,7 +78,8 @@ def ADMM_3D(u0,lambd, N, \
     # np.save("0_temp.npy",u0)
     """To display the denoising process, the intermediate values
     are saved to a temp.npy file. """
-    val_lst = [tv_norm(u0),]
+    # val_lst = [tv_norm(u0),]
+    val_lst = [signaltonoise(u0),]
     # store the TV norm of images for iteration control
     # iterate for a set number of times
     for i in range(N):
@@ -106,8 +107,9 @@ def ADMM_3D(u0,lambd, N, \
         # print(np.linalg.norm(x_next-x, axis = 1))
         # TODO: find out why does the usual convergence not work
         
-        val_temp = tv_norm(x_next)
-        if val_temp>val_lst[-1]:
+        # val_temp = tv_norm(x_next)
+        val_temp = float(signaltonoise(x_next))
+        if val_temp-val_lst[-1]<eps:
             # TV is increasing
             break
         val_lst.append(val_temp)

@@ -39,7 +39,7 @@ def image_broadcast(u0):
 
 
 """changed iteration stopping scheme to decrease of SNR."""
-def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-3):
+def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-5):
      g = g.flatten('F')
      n = len(g)
      print(np.sqrt(n))
@@ -70,10 +70,11 @@ def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-3):
         
         # x_temp = x_temp.reshape((rows,cols), order = "F")
         x_temp = u.reshape((broadcast_shape,broadcast_shape),order = "F")
-        snr = signaltonoise(x_temp)
+        snr = float(signaltonoise(x_temp))
         print(snr)
-        if snr <snr_lst[-1]:
+        if snr-snr_lst[-1]<tol:
             break
+        snr_lst.append(snr)
         x_temp = x_temp.astype(np.uint8)
         x_temp = cv2.resize(x_temp, (rows, cols), interpolation = cv2.INTER_AREA)
         # x_temp = x_temp[int((broadcast_shape-rows)/2):int(broadcast_shape-(broadcast_shape-rows)/2), \
@@ -91,7 +92,7 @@ def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-3):
         else:
             np.save(os_dir, x_temp)
         
-        snr_lst.append(snr)
+        
         #if err<eps:
         #    break
      
@@ -99,7 +100,7 @@ def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-3):
      return u, k
 
 """changed iteration stopping scheme to decrease of SNR."""
-def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-3):
+def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-5):
     g = g.flatten()
     n = len(g)
     print(np.sqrt(n))
@@ -113,7 +114,7 @@ def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-3):
     lambda1 = 1
      
     snr_lst = [float(signaltonoise(g.reshape(broadcast_shape, broadcast_shape))),]
-    while err > tol:
+    for k in range(N):
         print ('it. %d ' % k)
         up = u
         u, _ = splinalg.cg(sp.eye(n) + BtB, g - np.squeeze(lambda1 * Bt.dot(b - d)), tol=1e-05, maxiter=100)
@@ -128,7 +129,7 @@ def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-3):
         x_temp = x_temp.reshape((broadcast_shape,broadcast_shape),order = "F")
         snr = signaltonoise(x_temp)
         print(snr)
-        if snr <snr_lst[-1]:
+        if snr-snr_lst[-1]<tol:
             break
         snr_lst.append(snr)
         # shape squared image to original size
@@ -150,16 +151,13 @@ def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-3):
         else:
             np.save(os_dir, x_temp)
         # np.save(os_dir, x_temp)
-        k = k + 1
-        if k>N:
-            break
         # save obtained denoising process
     # output is vector, should be reshaped/ truncated.
-    print ('Stopped because norm(up-u)/norm(u) <= tol=%.1e\n'% tol)
+    print ("Stopped because SNR stops increasing.")
     return u, k
 
 
-def split_bregman(u0, weight, N, original_size, isotropic=True, channel_axis = None, eps = 1e-3):
+def split_bregman(u0, weight, N, original_size, isotropic=True, channel_axis = None, eps = 1e-6):
     """to include color image. By concatenating color channels
      that were separately denoised, one may obtain a denoised color image.
       One may alsp solve for the vectorized version of ROF, with 

@@ -6,14 +6,14 @@ with both gray-scale and color image.
 Implementation detail from 
 "Chambolle's Projection Algorithm for Total Variation
 Denoising", IPOL 2013.
-from: 
+adaptation from: 
 https://github.com/crowsonkb/tv-denoise/blob/master/tv_denoise/chambolle.py
 
 """
 
 import numpy as np
 import cv2
-from utils.utils import tv_norm
+from utils.utils import tv_norm, signaltonoise
 
 class ChambolleDenoiseStatus:
     """A status object supplied to the callback specified in tv_denoise_chambolle()."""
@@ -45,7 +45,7 @@ def magnitude(arr, axis=0, keepdims=False):
     return np.sqrt(np.sum(arr**2, axis=axis, keepdims=keepdims))
 
 
-def tv_denoise_chambolle(image, lambd, step_size=0.25, tol=1e-3, callback=None, channel_axis = None):
+def tv_denoise_chambolle(image, lambd, step_size=0.25, N = 100, tol=1e-6, callback=None, channel_axis = None):
     """
     Total variation image denoising with Chambolle's projection algorithm.
     Note that lambd := 1/lambda from the original algorithm. 
@@ -56,11 +56,9 @@ def tv_denoise_chambolle(image, lambd, step_size=0.25, tol=1e-3, callback=None, 
     p = np.zeros((2,) + image.shape, image.dtype)
     # print(p.shape)
     image_over_strength = image / lambd
-    diff = np.inf
-    i = 0
-    diff_lst = [diff, ]
-    while diff > tol:
-        i += 1
+    snr = float(signaltonoise(image))
+    snr_lst = [snr, ]
+    for i in range(N):
         grad_div_p_i = grad(div(p) - image_over_strength)
         # print(grad_div_p_i.shape)
         mag_gdpi = magnitude(grad_div_p_i, axis=(0, -1), keepdims=True)
@@ -69,23 +67,24 @@ def tv_denoise_chambolle(image, lambd, step_size=0.25, tol=1e-3, callback=None, 
         new_p = (p + step_size * grad_div_p_i) / (1 + step_size * mag_gdpi)
         # diff = np.max(magnitude(new_p - p))
         x_new = image - lambd * div(new_p)
-        if not channel_axis:
-            diff = np.linalg.norm(x-x_new)/\
-            np.linalg.norm(x)
-        else: 
-            diff = tv_norm(x_new)
-        if diff>diff_lst[-1]:
+        #if not channel_axis:
+        #    diff = np.linalg.norm(x-x_new)/\
+        #    np.linalg.norm(x)
+        #else: 
+        #    diff = tv_norm(x_new)
+        snr = float(signaltonoise(x_new))
+        if snr-snr_lst[-1]<tol:
             break
-        diff_lst.append(diff)
+        snr_lst.append(snr)
         p[:] = new_p
-        print(diff)
+        print(snr)
         # if i%5 == 0:
         x_temp = x_new.astype(np.uint8)
         os_dir = [str(i),"temp.npy"]
         os_dir = "_".join(os_dir)
         np.save(os_dir, np.squeeze(x_temp))
         if callback is not None:
-            callback(ChambolleDenoiseStatus(i, float(diff)))
+            callback(ChambolleDenoiseStatus(i, float(snr)))
         
         print(i)
     

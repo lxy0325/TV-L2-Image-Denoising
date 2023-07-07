@@ -6,7 +6,7 @@ from utils.utils import deltaX_p,deltaX_n,\
 """
 The code realizes the gradient descent algorithm as orginally proposed in ROF paper:
 Rudin, L. I.; Osher, S.; Fatemi, E. (1992). "Nonlinear total variation based noise removal algorithms".
-The input should be normalized to a value between 0 and 1 before input.
+The input is normalized to a value between 0 and 1 before processing.
 Due to normalization the eps should be also adjusted.
 It takes approx. 5 min to run since multiple for loops are involved. 
 We do not recommend anyone to run this for the purpose of image denoising.

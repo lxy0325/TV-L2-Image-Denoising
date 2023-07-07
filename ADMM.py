@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from scipy.fftpack import fft2, ifft2
 import time
-from utils.utils import D, Div
+from utils.utils import D, Div, signaltonoise
 
 # Auxiliary functions
 def z_solver(x, u, lambd, rho, mask, tv_type):
@@ -25,7 +25,7 @@ def x_solver(z, u, u0, rho, deno):
 """implements ADMM for TV-L^2."""
 def ADMM_2D(u0,lambd, N, \
               tv_type = "anisotropic",
-                rho = 1, mu = 10, tau = 2, ground_truth = None, eps = 1e-3, channel_axis = None):
+                rho = 1, mu = 10, tau = 2, ground_truth = None, eps = 1e-6, channel_axis = None):
     # note: when ground truth is nonzero, eps is used to
     # ensure the quality of output image
     x = np.zeros_like(u0)
@@ -54,73 +54,49 @@ def ADMM_2D(u0,lambd, N, \
     """To display the denoising process, the intermediate values
     are saved to a temp.npy file. """
     # TODO: find RAM-economical solution to dynamical denoising display
-    if ground_truth == None:
         # iterate for a set number of times
-        for k in range(N):
-            # TODO: set stopping criteria with original image
-            x_next = x_solver(z, u, u0, rho, deno)
-            z_next = z_solver(x_next, u, lambd, rho, mask, tv_type)
-            
-            u_next = u + rho * (D(x_next) - z_next)
-            
-            s = -rho * (Div(z_next - z))
-            r = D(x) - z
-            s_norm = np.linalg.norm(s)
-            r_norm = np.linalg.norm(r)
-            if r_norm > mu * s_norm:
-                rho = rho * tau
-            elif s_norm > mu * r_norm:
-                rho = rho / tau
-            if np.linalg.norm(x-x_next)/np.linalg.norm(x) < eps:
+    print(signaltonoise(u0))
+    snr_lst = [float(signaltonoise(u0)),]
+    for k in range(N):
+        # TODO: set stopping criteria with original image
+        x_next = x_solver(z, u, u0, rho, deno)
+        z_next = z_solver(x_next, u, lambd, rho, mask, tv_type)
+        
+        u_next = u + rho * (D(x_next) - z_next)
+        
+        s = -rho * (Div(z_next - z))
+        r = D(x) - z
+        s_norm = np.linalg.norm(s)
+        r_norm = np.linalg.norm(r)
+        if r_norm > mu * s_norm:
+            rho = rho * tau
+        elif s_norm > mu * r_norm:
+            rho = rho / tau
+        # if np.linalg.norm(x-x_next)/np.linalg.norm(x) < eps:
+        #     break
+        
+        x = x_next
+        z = z_next
+        u = u_next
+        x_temp = x.astype(np.uint8)
+        os_dir = [str(k),"temp.npy"]
+        os_dir = "_".join(os_dir)
+        np.save(os_dir, x_temp)
+        if k>1:
+            # first time fft contains imaginary number
+            # therefore skip noise comparison when k<=1
+            snr = signaltonoise(x_next)
+            print(snr)
+            if snr-snr_lst[-1]<eps:
                 break
-            x = x_next
-            z = z_next
-            u = u_next
-            x_temp = x.astype(np.uint8)
-            os_dir = [str(k),"temp.npy"]
-            os_dir = "_".join(os_dir)
-            np.save(os_dir, x_temp)
-            # denoise_process.append(u)
-    else:
-        # compare the generated image with ground truth
-        # end iteration if difference smaller than eps
-        # or when k exceeds maxiter
-        k = 0
-        while np.linalg.norm(ground_truth, x)/np.linalg.norm(x)>eps:
-            x_next = x_solver(z, u, u0, rho, deno)
-            z_next = z_solver(x_next, u, lambd, rho, mask, tv_type)
-            u_next = u + rho * (D(x_next) - z_next)
-            
-            s = -rho * (Div(z_next - z))
-            r = D(x) - z
-            
-            s_norm = np.linalg.norm(s)
-            r_norm = np.linalg.norm(r)
-            
-            if r_norm > mu * s_norm:
-                rho = rho * tau
-            elif s_norm > mu * r_norm:
-                rho = rho / tau
-            
-            x = x_next
-            z = z_next
-            u = u_next
-            x_temp = x.astype(np.uint8)
-            os_dir = [str(k),"temp.npy"]
-            os_dir = "_".join(os_dir)
-            np.save(os_dir, x_temp)
-            # denoise_process.append(u)
-            if k > N:
-                break
-            k+=1
-    # toc = time.perf_counter()
-    # runtime = toc - tic
-    
+            snr_lst.append(snr)
+        # denoise_process.append(u)
+ 
     return x, k
 
 def ADMM(u0, lambd, N, \
               isotropic=True, channel_axis = None,
-                rho = 1, mu = 10, tau = 2, ground_truth = None, eps = 1e-3):
+                rho = 1, mu = 10, tau = 2, ground_truth = None, eps = 1e-6):
     """generalized ADMM for color image."""
     k = 0
     if channel_axis == True: # color image
