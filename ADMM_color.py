@@ -41,6 +41,7 @@ def ADMM_3D(u0,lambd, N, \
     # note: when ground truth is nonzero, eps is used to
     # ensure the quality of output image
     m, n, c = u0.shape
+    u0 = u0/255
     assert c == 3, "color channel mismatch error."
     # Initialization
     u0_R = u0[:,:,0]
@@ -79,7 +80,7 @@ def ADMM_3D(u0,lambd, N, \
     """To display the denoising process, the intermediate values
     are saved to a temp.npy file. """
     # val_lst = [tv_norm(u0),]
-    val_lst = [signaltonoise(u0),]
+    val_lst = [signaltonoise(u0*255),]
     # store the TV norm of images for iteration control
     # iterate for a set number of times
     for i in range(N):
@@ -108,7 +109,7 @@ def ADMM_3D(u0,lambd, N, \
         # TODO: find out why does the usual convergence not work
         
         # val_temp = tv_norm(x_next)
-        val_temp = float(signaltonoise(x_next))
+        val_temp = float(signaltonoise(x_next*255))
         if val_temp-val_lst[-1]<eps:
             # TV is increasing
             break
@@ -118,7 +119,7 @@ def ADMM_3D(u0,lambd, N, \
         z = z_next
         u = u_next
 
-        x_temp = x.astype(np.uint8)
+        x_temp = (x*255).astype(np.uint8)
         os_dir = [str(i),"temp.npy"]
         os_dir = "_".join(os_dir)
         np.save(os_dir, x_temp)
@@ -127,4 +128,4 @@ def ADMM_3D(u0,lambd, N, \
     # toc = time.perf_counter()
     # runtime = toc - tic
     
-    return x, i
+    return x*255, i

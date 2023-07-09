@@ -8,8 +8,10 @@ from utils.utils import D, Div, tv_norm,signaltonoise
 """
 
 def FGP_gray2d(y, lambd, n_iters, tv_type='anisotropic', \
-               ground_truth = None, eps = 1e-5):
+               ground_truth = None, eps = 1e-6):
     # Main loop
+    y = y/255
+    lambd = 1/lambd
     n1, n2 = y.shape
     grad_next = np.zeros((n1, n2, 2))
     grad_prev = np.zeros((n1, n2, 2))
@@ -17,7 +19,7 @@ def FGP_gray2d(y, lambd, n_iters, tv_type='anisotropic', \
     t_prev = 1
     tic = time.perf_counter()
     
-    snr_lst = [float(signaltonoise(y)),]
+    snr_lst = [float(signaltonoise(y*255)),]
     for i in range(n_iters):
         grad_next = u + 1 / (8 * lambd) * D(y - lambd * Div(u))
         deno = np.zeros((n1, n2, 2))
@@ -33,6 +35,7 @@ def FGP_gray2d(y, lambd, n_iters, tv_type='anisotropic', \
         t_next = (1 + np.sqrt(1 + 4 * t_prev**2)) / 2
         u = grad_next + (t_prev - 1) / t_next * (grad_next - grad_prev)
         x_temp = y - lambd*Div(grad_next)
+        x_temp = x_temp*255
         snr = float(signaltonoise(x_temp))
         if snr-snr_lst[-1]<eps:
             break
@@ -50,6 +53,7 @@ def FGP_gray2d(y, lambd, n_iters, tv_type='anisotropic', \
         np.save(os_dir, x_temp)
 
     x = y - lambd * Div(grad_next)
+    x = x*255
     toc = time.perf_counter()
     runtime = toc - tic 
 
@@ -57,9 +61,11 @@ def FGP_gray2d(y, lambd, n_iters, tv_type='anisotropic', \
 
 
 def FGP_color(y, lambda_val, n_iters, tv_type='anisotropic',\
-               ground_truth = None, eps = 1e-5):
+               ground_truth = None, eps = 1e-6):
     # TODO breaking criteria
     n1, n2, _ = y.shape
+    lambda_val = 1/lambda_val
+    y = y/255
     grad_next = np.zeros((n1, n2, 3, 2))
     grad_prev = np.zeros((n1, n2, 3, 2))
     u = np.zeros((n1, n2, 3, 2))
@@ -94,7 +100,7 @@ def FGP_color(y, lambda_val, n_iters, tv_type='anisotropic',\
             x_temp = y - Div(grad_next)
             # val_temp  = np.linalg.norm(Div(grad_prev)-Div(grad_next))/np.linalg.norm(x_temp)
             # val_temp = tv_norm(x_temp)
-            val_temp = float(signaltonoise(x_temp))
+            val_temp = float(signaltonoise(x_temp*255))
             # print(val_temp)
             if val_temp-val_lst[-1]<eps:
                 break
@@ -107,7 +113,7 @@ def FGP_color(y, lambda_val, n_iters, tv_type='anisotropic',\
             t_prev = t_next
             
             # save denoising process as .npy file 
-            x_temp = x_temp.astype(np.uint8)
+            x_temp = (x_temp*255).astype(np.uint8)
             os_dir = [str(i),"temp.npy"]
             os_dir = "_".join(os_dir)
             np.save(os_dir, x_temp)
@@ -130,7 +136,7 @@ def FGP_color(y, lambda_val, n_iters, tv_type='anisotropic',\
             # val_temp  = np.linalg.norm(Div(grad_prev)-Div(grad_next))/np.linalg.norm(x_temp)
             # val_temp = tv_norm(x_temp)
             # print(val_temp)
-            val_temp = float(signaltonoise(x_temp))
+            val_temp = float(signaltonoise(x_temp*255))
             # print(val_temp)
             if val_temp-val_lst[-1]<eps:
                 break
@@ -142,17 +148,17 @@ def FGP_color(y, lambda_val, n_iters, tv_type='anisotropic',\
             t_prev = t_next   
             
             # save denoising process as .npy file 
-            x_temp = x_temp.astype(np.uint8)
+            x_temp = (x_temp*255).astype(np.uint8)
             os_dir = [str(i),"temp.npy"]
             os_dir = "_".join(os_dir)
             np.save(os_dir, x_temp)
 
 
     x = y - Div(grad_next)  # convert to the primal optimal
-    return x, i #val_lst
+    return x*255, i #val_lst
 
 def FGP(u0, lambda_val, n_iters, isotropic = True \
-        ,channel_axis = None, eps = 1e-6):
+        ,channel_axis = None, eps = 1e-10):
     i = 0
     if channel_axis == True: # color image
         assert len(u0.shape)==3, "dimension mismatch"

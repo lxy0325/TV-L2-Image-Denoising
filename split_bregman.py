@@ -39,7 +39,7 @@ def image_broadcast(u0):
 
 
 """changed iteration stopping scheme to decrease of SNR."""
-def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-5):
+def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-10):
      g = g.flatten('F')
      n = len(g)
      print(np.sqrt(n))
@@ -51,7 +51,7 @@ def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-5):
      err = 1
      # k = 1
      # tol = 0.001
-     lambda1 = 0.5
+     lambda1 = 0.3
      
      snr_lst = [float(signaltonoise(g.reshape(broadcast_shape, broadcast_shape))),]
      for k in range(N):
@@ -100,7 +100,7 @@ def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-5):
      return u, k
 
 """changed iteration stopping scheme to decrease of SNR."""
-def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-5):
+def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-6):
     g = g.flatten()
     n = len(g)
     print(np.sqrt(n))

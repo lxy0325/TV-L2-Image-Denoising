@@ -45,17 +45,18 @@ def magnitude(arr, axis=0, keepdims=False):
     return np.sqrt(np.sum(arr**2, axis=axis, keepdims=keepdims))
 
 
-def tv_denoise_chambolle(image, lambd, step_size=0.25, N = 100, tol=1e-6, callback=None, channel_axis = None):
+def tv_denoise_chambolle(image, lambd, step_size=0.25, N = 100, tol=1e-10, callback=None, channel_axis = None):
     """
     Total variation image denoising with Chambolle's projection algorithm.
     Note that lambd := 1/lambda from the original algorithm. 
     """
+    lambd = 1/lambd
     image = image.astype(np.float32)
-    print(image)
+    # print(image)
     image = np.atleast_3d(image)
     p = np.zeros((2,) + image.shape, image.dtype)
     # print(p.shape)
-    image_over_strength = image / lambd
+    image_over_strength = image*lambd
     snr = float(signaltonoise(image))
     snr_lst = [snr, ]
     for i in range(N):
@@ -63,10 +64,10 @@ def tv_denoise_chambolle(image, lambd, step_size=0.25, N = 100, tol=1e-6, callba
         # print(grad_div_p_i.shape)
         mag_gdpi = magnitude(grad_div_p_i, axis=(0, -1), keepdims=True)
         # print(mag_gdpi.shape)
-        x = image - lambd * div(p)
+        # x = image - div(p)*(1/lambd)
         new_p = (p + step_size * grad_div_p_i) / (1 + step_size * mag_gdpi)
         # diff = np.max(magnitude(new_p - p))
-        x_new = image - lambd * div(new_p)
+        x_new = image - (1/lambd) * div(new_p)
         #if not channel_axis:
         #    diff = np.linalg.norm(x-x_new)/\
         #    np.linalg.norm(x)
@@ -88,4 +89,4 @@ def tv_denoise_chambolle(image, lambd, step_size=0.25, N = 100, tol=1e-6, callba
         
         print(i)
     
-    return np.squeeze(image - lambd * div(p)), i
+    return np.squeeze(image - (1/lambd) * div(p)), i
