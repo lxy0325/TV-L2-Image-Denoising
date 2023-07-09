@@ -13,44 +13,25 @@ https://github.com/crowsonkb/tv-denoise/blob/master/tv_denoise/chambolle.py
 
 import numpy as np
 import cv2
-from utils.utils import tv_norm, signaltonoise
-
-class ChambolleDenoiseStatus:
-    """A status object supplied to the callback specified in tv_denoise_chambolle()."""
-    i: int
-    diff: float
-
-def grad(arr):
-    """Computes the discrete gradient of an image with central differences."""
-    out = np.zeros((2,) + arr.shape, arr.dtype)
-    out[0, :-1, :, ...] = arr[1:, :, ...] - arr[:-1, :, ...]
-    out[1, :, :-1, ...] = arr[:, 1:, ...] - arr[:, :-1, ...]
-    return out
+from utils.utils import signaltonoise, grad, div, magnitude
 
 
-def div(arr):
-    """Computes the discrete divergence of a vector array."""
-    out = np.zeros_like(arr)
-    out[0, 0, :, ...] = arr[0, 0, :, ...]
-    out[0, -1, :, ...] = -arr[0, -2, :, ...]
-    out[0, 1:-1, :, ...] = arr[0, 1:-1, :, ...] - arr[0, :-2, :, ...]
-    out[1, :, 0, ...] = arr[1, :, 0, ...]
-    out[1, :, -1, ...] = -arr[1, :, -2, ...]
-    out[1, :, 1:-1, ...] = arr[1, :, 1:-1, ...] - arr[1, :, :-2, ...]
-    return np.sum(out, axis=0)
-
-
-def magnitude(arr, axis=0, keepdims=False):
-    """Computes the element-wise magnitude of a vector array."""
-    return np.sqrt(np.sum(arr**2, axis=axis, keepdims=keepdims))
-
-
-def tv_denoise_chambolle(image, lambd, step_size=0.25, N = 100, tol=1e-10, callback=None, channel_axis = None):
+def tv_denoise_chambolle(image, weight, step_size=0.25, N = 100, tol=1e-10):
     """
     Total variation image denoising with Chambolle's projection algorithm.
     Note that lambd := 1/lambda from the original algorithm. 
+    The TV scheme was not specified in the paper
+    "Chambolle's Projection Algorithm for Total Variation Denoising"
+    diff = np.max(magnitude(new_p - p)) is the original stopping criterion
+    prescribed by Chambolle. We forsake it for SNR due to algorithm comparison.
+    
+    image: noisy image, type np.array
+    weight: weight parameter between value 10-20.
+    step_size: projection step size. convergence is guaranteed for step size under 0.25.
+    N: max iter.
+    tol: stop iteration when SNR_{i}-SNR_{i-1}<tol.
     """
-    lambd = 1/lambd
+    lambd = 1/weight
     image = image.astype(np.float32)
     # print(image)
     image = np.atleast_3d(image)
@@ -68,11 +49,7 @@ def tv_denoise_chambolle(image, lambd, step_size=0.25, N = 100, tol=1e-10, callb
         new_p = (p + step_size * grad_div_p_i) / (1 + step_size * mag_gdpi)
         # diff = np.max(magnitude(new_p - p))
         x_new = image - (1/lambd) * div(new_p)
-        #if not channel_axis:
-        #    diff = np.linalg.norm(x-x_new)/\
-        #    np.linalg.norm(x)
-        #else: 
-        #    diff = tv_norm(x_new)
+        
         snr = float(signaltonoise(x_new))
         if snr-snr_lst[-1]<tol:
             break
@@ -80,12 +57,11 @@ def tv_denoise_chambolle(image, lambd, step_size=0.25, N = 100, tol=1e-10, callb
         p[:] = new_p
         print(snr)
         # if i%5 == 0:
+
         x_temp = x_new.astype(np.uint8)
         os_dir = [str(i),"temp.npy"]
         os_dir = "_".join(os_dir)
         np.save(os_dir, np.squeeze(x_temp))
-        if callback is not None:
-            callback(ChambolleDenoiseStatus(i, float(snr)))
         
         print(i)
     

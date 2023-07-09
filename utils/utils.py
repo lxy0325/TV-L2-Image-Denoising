@@ -83,6 +83,8 @@ def Div(grad):
                 div[:, :, k] += div1 + div2
         return div
 
+"""The following is utilized in sparse matrix computation."""
+
 def delete_row_lil(mat, i):
     if not isinstance(mat, scipy.sparse.lil_matrix):
         raise ValueError('works only for LIL format -- use .tolil() first')
@@ -128,6 +130,31 @@ def DiffOper(N):
     #print 'BtB dimensions: ', BtB.shape
     #print 'Returned'
     return B, Bt, BtB
+
+"""The following computes gradient and div regardless of dimensions."""
+def grad(arr):
+    """Computes the discrete gradient of an image with central differences."""
+    out = np.zeros((2,) + arr.shape, arr.dtype)
+    out[0, :-1, :, ...] = arr[1:, :, ...] - arr[:-1, :, ...]
+    out[1, :, :-1, ...] = arr[:, 1:, ...] - arr[:, :-1, ...]
+    return out
+
+
+def div(arr):
+    """Computes the discrete divergence of a vector array."""
+    out = np.zeros_like(arr)
+    out[0, 0, :, ...] = arr[0, 0, :, ...]
+    out[0, -1, :, ...] = -arr[0, -2, :, ...]
+    out[0, 1:-1, :, ...] = arr[0, 1:-1, :, ...] - arr[0, :-2, :, ...]
+    out[1, :, 0, ...] = arr[1, :, 0, ...]
+    out[1, :, -1, ...] = -arr[1, :, -2, ...]
+    out[1, :, 1:-1, ...] = arr[1, :, 1:-1, ...] - arr[1, :, :-2, ...]
+    return np.sum(out, axis=0)
+
+
+def magnitude(arr, axis=0, keepdims=False):
+    """Computes the element-wise magnitude of a vector array."""
+    return np.sqrt(np.sum(arr**2, axis=axis, keepdims=keepdims))
 
 """ 
 The following functions are utilized in ROF_proposed.py to realize 
@@ -208,3 +235,27 @@ def signaltonoise(a, axis=None, ddof=0):
     m = a.mean(axis)
     sd = a.std(axis=axis, ddof=ddof)
     return np.where(sd == 0, 0, m/sd)
+
+"""for reshaping images. No longer used."""
+def image_broadcast(u0):
+    """
+    broadcast the rectangular image into square.
+   
+    u0 : array h*w*c 
+    return array u: max(h, w)**2*c
+    """
+    s = u0.shape
+    height = s[0]
+    width = s[1]
+    x = height if height>width else width
+    y = height if height>width else width
+    if len(s)==3:
+        square = np.zeros((x,y,s[-1]))
+        square[int((y-height)/2):int(y-(y-height)/2), \
+               int((x-width)/2):int(x-(x-width)/2)] = u0
+    else:
+        assert len(s)==2, "dimension error."
+        square = np.zeros((x,y))
+        square[int((y-height)/2):int(y-(y-height)/2), \
+               int((x-width)/2):int(x-(x-width)/2)] = u0
+    return square

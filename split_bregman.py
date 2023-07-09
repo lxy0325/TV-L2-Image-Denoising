@@ -3,58 +3,47 @@ from math import sqrt
 import numpy as np
 import os
 import cv2
-from utils.utils import delete_row_lil, delete_col_lil,delete_row_csr,DiffOper, signaltonoise
+from utils.utils import delete_row_lil, delete_col_lil,delete_row_csr,\
+    DiffOper, signaltonoise, image_broadcast
 import pdb, scipy, scipy.sparse as sp, scipy.sparse.linalg as splinalg
 
 
 """
 adaptation from matlab:
-https://github.com/melrobin/SplitBregman
-into python3 to include color images
-and rectangular images.
+https://de.mathworks.com/matlabcentral/fileexchange/36278-split-bregman-method-for-total-variation-denoising
+into python3 to include color images.
+Algorithm from:
+Goldstein and Osher, The split Bregman method for L1 regularized problems
+SIAM Journal on Imaging Sciences 2(2) 2009
 """
-
-
-def image_broadcast(u0):
-    """
-    broadcast the rectangular image into square.
-    u0 : array h*w*c 
-    return array u: max(h, w)**2*c
-    """
-    s = u0.shape
-    height = s[0]
-    width = s[1]
-    x = height if height>width else width
-    y = height if height>width else width
-    if len(s)==3:
-        square = np.zeros((x,y,s[-1]))
-        square[int((y-height)/2):int(y-(y-height)/2), \
-               int((x-width)/2):int(x-(x-width)/2)] = u0
-    else:
-        assert len(s)==2, "dimension error."
-        square = np.zeros((x,y))
-        square[int((y-height)/2):int(y-(y-height)/2), \
-               int((x-width)/2):int(x-(x-width)/2)] = u0
-    return square
 
 
 """changed iteration stopping scheme to decrease of SNR."""
 def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-10):
-     g = g.flatten('F')
-     n = len(g)
-     print(np.sqrt(n))
-     broadcast_shape = int(np.sqrt(n))
-     B, Bt, BtB = DiffOper(int(np.sqrt(n)))
-     b = np.zeros((2*n,1))
-     d = b
-     u = g
-     err = 1
-     # k = 1
-     # tol = 0.001
-     lambda1 = 0.3
-     
-     snr_lst = [float(signaltonoise(g.reshape(broadcast_shape, broadcast_shape))),]
-     for k in range(N):
+    """
+    g: noisy image, type 2d np.array
+    g should be reshaped to square before input.
+    mu: weight parameter between value 10-20.
+    rows, cols: for reshaping g after flattening.
+    tv_type: = "isotropic" or "anisotropic".
+    N: max iter.
+    tol: stop iteration when SNR_{i}-SNR_{i-1}<tol.
+    """
+    g = g.flatten('F')
+    n = len(g)
+    print(np.sqrt(n))
+    broadcast_shape = int(np.sqrt(n))
+    B, Bt, BtB = DiffOper(int(np.sqrt(n)))
+    b = np.zeros((2*n,1))
+    d = b
+    u = g
+    err = 1
+    # k = 1
+    # tol = 0.001
+    lambda1 = 1 # weight between 2 part of objective function
+    
+    snr_lst = [float(signaltonoise(g.reshape(broadcast_shape, broadcast_shape))),]
+    for k in range(N):
         print ('it. %g '% k)
         up = u
         u,_=sp.linalg.cg(sp.eye(n)+BtB,g-np.squeeze(lambda1*Bt.dot(b-d)),tol=1e-5, maxiter=100)
@@ -91,16 +80,24 @@ def SB_ITV(g, mu,rows, cols, N = 100,tol = 1e-10):
             np.save(os_dir, lst)
         else:
             np.save(os_dir, x_temp)
-        
-        
-        #if err<eps:
-        #    break
-     
-     print ("Stopped because SNR stops increasing.")  #norm(up-u)/norm(u) <= tol=%.1e\n'% tol)
-     return u, k
+    
+    #if err<eps:
+    #    break
+    
+    print ("Stopped because SNR stops increasing.")  #norm(up-u)/norm(u) <= tol=%.1e\n'% tol)
+    return u, k
 
 """changed iteration stopping scheme to decrease of SNR."""
 def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-6):
+    """
+    g: noisy image, type 2d np.array
+    g should be reshaped to square before input.
+    mu: weight parameter between value 10-20.
+    rows, cols: for reshaping g after flattening.
+    tv_type: = "isotropic" or "anisotropic".
+    N: max iter.
+    tol: stop iteration when SNR_{i}-SNR_{i-1}<tol.
+    """
     g = g.flatten()
     n = len(g)
     print(np.sqrt(n))
@@ -109,9 +106,8 @@ def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-6):
     b = np.zeros((2 * n, 1))
     d = b
     u = g
-    err = 1
     k = 1
-    lambda1 = 1
+    lambda1 = 1 # weight between 2 parts of objective function
      
     snr_lst = [float(signaltonoise(g.reshape(broadcast_shape, broadcast_shape))),]
     for k in range(N):
@@ -134,9 +130,6 @@ def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-6):
         snr_lst.append(snr)
         # shape squared image to original size
         x_temp = cv2.resize(x_temp, (cols, rows), interpolation = cv2.INTER_AREA)
-        # truncate broadcasted part of image
-        # x_temp = x_temp[int((broadcast_shape-rows)/2):int(broadcast_shape-(broadcast_shape-rows)/2), \
-        #        int((broadcast_shape-cols)/2):int(broadcast_shape-(broadcast_shape-cols)/2)]
         
         os_dir = [str(k),"temp.npy"]
         os_dir = "_".join(os_dir)
@@ -158,12 +151,17 @@ def SB_ATV(g, mu,rows, cols, N = 100,tol = 1e-6):
 
 
 def split_bregman(u0, weight, N, original_size, isotropic=True, channel_axis = None, eps = 1e-6):
-    """to include color image. By concatenating color channels
+    """
+    to include color image. By concatenating color channels
      that were separately denoised, one may obtain a denoised color image.
-      One may alsp solve for the vectorized version of ROF, with 
-       an extra dimension for color channels.
         we define param. weight as 1/lambd which represents the weight of 
-          image regularization.  """
+          image regularization.  
+    u0 : noisy input as array.
+    weight: weight parameter 1/lambda usually between 10-20.
+    N: maxiter.
+    original_size: for reshaping inputs after flattening. list or tuple.
+    """
+    
     # first broadcast the image to square
     rows = original_size[0]
     cols = original_size[1]
@@ -171,8 +169,7 @@ def split_bregman(u0, weight, N, original_size, isotropic=True, channel_axis = N
     # u0 = image_broadcast(u0)
     broadcast_shape = u0.shape[0]
     if channel_axis == True: # color image
-        # TODO: assert dim, error message
-        # TODO: color image iteration redo
+        # TODO: color image iteration 
         s = u0.shape
         rows = s[0]
         cols = s[1]
@@ -183,9 +180,9 @@ def split_bregman(u0, weight, N, original_size, isotropic=True, channel_axis = N
             f = np.reshape(u0[:,:,i], (broadcast_shape, broadcast_shape), order = "F")
             g = f.flatten("F") # column-major flatten
             if isotropic == True:
-                g_denoise, k = SB_ITV(g, weight, rows, cols, tol = eps)
+                g_denoise, k = SB_ITV(g, weight, rows, cols, tol = eps, N = N)
             else:
-                g_denoise, k = SB_ATV(g, weight, rows, cols, tol = eps)
+                g_denoise, k = SB_ATV(g, weight, rows, cols, tol = eps, N = N)
             g_denoise = g_denoise.reshape((broadcast_shape,broadcast_shape),order = "F")
             g_denoise = g_denoise[int((broadcast_shape-rows)/2):int(broadcast_shape-(broadcast_shape-rows)/2), \
                                   int((broadcast_shape-cols)/2):int(broadcast_shape-(broadcast_shape-cols)/2)]
@@ -198,9 +195,9 @@ def split_bregman(u0, weight, N, original_size, isotropic=True, channel_axis = N
         out = np.zeros_like(u0)
         g = u0.flatten('F')
         if isotropic == True:
-            out, k= SB_ITV(g, weight, rows, cols, tol = eps)
+            out, k= SB_ITV(g, weight, rows, cols, tol = eps, N = N)
         else:
-            out, k = SB_ATV(g, weight, rows, cols, tol = eps)
+            out, k = SB_ATV(g, weight, rows, cols, tol = eps, N = N)
         
         out = out.reshape((broadcast_shape,broadcast_shape),order = "F")
         # out = out[int((broadcast_shape-rows)/2):int(broadcast_shape-(broadcast_shape-rows)/2), \

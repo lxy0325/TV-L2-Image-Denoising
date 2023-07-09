@@ -5,15 +5,17 @@ import time
 from utils.utils import D, Div, signaltonoise
 
 """
-We give different convergence criteria for color images due to the general failure of implementing
-the usual normalized_norm<eps one. (image channel size would change eps value drastically.) 
-We compute the TV/SNR for each iteration and break from iteration 
-once the TV/SNR starts to increase/decrease. According to:
+Note that image channel size would require drastically different eps value. 
+We compute the SNR for each iteration and break from iteration 
+once the SNR starts to increase. Algorithm according to:
+https://web.stanford.edu/~boyd/papers/pdf/admm_distr_stats.pdf
 http://www.corc.ieor.columbia.edu/reports/techreports/tr-2004-03.pdf
+adaptation from:
+https://github.com/Yunhui-Gao/total-variation-image-denoising
 """
 
 
-# Auxiliary functions
+# Auxiliary functions for projection
 def z_solver(x, u, lambd, rho, mask, tv_type):
     w = mask * (D(x) + (1 / rho) * u)
     if tv_type == 'anisotropic':
@@ -32,13 +34,22 @@ def x_solver(z, u, u0, rho, deno):
     return x
 
 """implements ADMM for TV-L^2."""
-def ADMM_3D(u0,lambd, N, \
+def ADMM_3D(image,weight, N, \
               tv_type = "anisotropic",
-                rho = 0.05, mu = 10, tau = 2, ground_truth = None, eps = 1e-3, channel_axis = None):
+                rho = 0.05, mu = 10, tau = 2, eps = 1e-8):
+    """
+    image: noisy image, type np.array
+    weight: weight parameter between value 10-20.
+    tv_type: ="isotropic" or "anisotropic".
+    N: max iter.
+    eps: stop iteration when SNR_{i}-SNR_{i-1}<tol.
+    """
     # note: when ground truth is nonzero, eps is used to
     # ensure the quality of output image
+    u0 = image
     m, n, c = u0.shape
-    u0 = u0/255
+    # u0 = u0/255
+    lambd = 1/weight
     assert c == 3, "color channel mismatch error."
     # Initialization
     u0_R = u0[:,:,0]
@@ -52,6 +63,7 @@ def ADMM_3D(u0,lambd, N, \
 
     # z = D(u_channel)
     mask = np.ones((m,n,2))
+    # one mask
     mask[-1, :, 0] = 0
     mask[:, -1, 1] = 0
     dh = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
@@ -70,18 +82,15 @@ def ADMM_3D(u0,lambd, N, \
     print(z.shape)
     # print("z=",z)
     print("dtz=",Div(z))
-    # tic = time.perf_counter()
-    # denoise_process = []
     # Main loop
-    # np.save("0_temp.npy",u0)
+
     """To display the denoising process, the intermediate values
     are saved to a temp.npy file. """
     # val_lst = [tv_norm(u0),]
-    val_lst = [signaltonoise(u0*255),]
-    # store the TV norm of images for iteration control
+    val_lst = [signaltonoise(u0),]
+    # store the SNR of images for iteration control
     # iterate for a set number of times
     for i in range(N):
-        # TODO: set stopping criteria with original image
         x_next[:,:,0] = x_solver(z[:,:,0,:], u[:,:,0,:], u0_R, rho, deno)
         z_next[:,:,0,:] = z_solver(x_next[:,:,0], u[:,:,0,:], lambd, rho, mask, tv_type)
         x_next[:,:,1] = x_solver(z[:,:,1,:], u[:,:,1,:], u0_G, rho, deno)
@@ -90,9 +99,6 @@ def ADMM_3D(u0,lambd, N, \
         z_next[:,:,2,:] = z_solver(x_next[:,:,2], u[:,:,2,:], lambd, rho, mask, tv_type)
 
         u_next = u + rho * (D(x_next) - z_next)
-        # print(DT(z))
-        # z_next = np.stack([z_next_R, z_next_G, z_next_B], axis = 2)
-        # print(DT(z_next))
         s = -rho * (Div(z_next - z))
         r = D(x) - z
         s_norm = np.linalg.norm(s)
@@ -102,13 +108,10 @@ def ADMM_3D(u0,lambd, N, \
         elif s_norm > mu * r_norm:
             rho = rho / tau
         print("ite",i)
-        # print(np.linalg.norm(x_next-x, axis = 1))
-        # TODO: find out why does the usual convergence not work
-        
-        # val_temp = tv_norm(x_next)
-        val_temp = float(signaltonoise(x_next*255))
-        if val_temp-val_lst[-1]<eps:
-            # TV is increasing
+        val_temp = float(signaltonoise(x_next))
+        if i>1 and val_temp-val_lst[-1]<eps:
+            # first time iteration is mostly imaginary number
+            # break when noise ratio stops decreasing
             break
         val_lst.append(val_temp)
 
@@ -116,26 +119,29 @@ def ADMM_3D(u0,lambd, N, \
         z = z_next
         u = u_next
 
-        x_temp = (x*255).astype(np.uint8)
+        x_temp = x.astype(np.uint8)
         os_dir = [str(i),"temp.npy"]
         os_dir = "_".join(os_dir)
         np.save(os_dir, x_temp)
-        # denoise_process.append(u)
-
-    # toc = time.perf_counter()
-    # runtime = toc - tic
-    
-    return x*255, i
+        
+    return x, i
 
 
 """implements ADMM for TV-L^2."""
-def ADMM_2D(u0,lambd, N, \
+def ADMM_2D(image,weight, N, \
               tv_type = "anisotropic",
                 rho = 1, mu = 10, tau = 2, ground_truth = None, eps = 1e-10, channel_axis = None):
     # note: when ground truth is nonzero, eps is used to
     # ensure the quality of output image
-    lambd= 1/lambd
-    u0 = u0/255
+    """
+    image: grayscale noisy image, type m*n np.array
+    weight: weight parameter between value 10-20.
+    tv_type: ="isotropic" or "anisotropic".
+    N: max iter.
+    eps: stop iteration when SNR_{i}-SNR_{i-1}<tol.
+    """
+    lambd= 1/weight
+    u0 = image/255
     # normalize input
     x = np.zeros_like(u0)
     # Initialization
@@ -161,16 +167,12 @@ def ADMM_2D(u0,lambd, N, \
     # Main loop
     # np.save("0_temp.npy",u0)
     """To display the denoising process, the intermediate values
-    are saved to a temp.npy file. """
-    # TODO: find RAM-economical solution to dynamical denoising display
-        # iterate for a set number of times
+    are saved to temp.npy file. """
     print(signaltonoise(u0))
     snr_lst = [float(signaltonoise(u0)),]
     for k in range(N):
-        # TODO: set stopping criteria with original image
         x_next = x_solver(z, u, u0, rho, deno)
         z_next = z_solver(x_next, u, lambd, rho, mask, tv_type)
-        
         u_next = u + rho * (D(x_next) - z_next)
         
         s = -rho * (Div(z_next - z))
@@ -181,8 +183,6 @@ def ADMM_2D(u0,lambd, N, \
             rho = rho * tau
         elif s_norm > mu * r_norm:
             rho = rho / tau
-        # if np.linalg.norm(x-x_next)/np.linalg.norm(x) < eps:
-        #     break
         
         x = x_next
         z = z_next
@@ -204,7 +204,7 @@ def ADMM_2D(u0,lambd, N, \
  
     return x*255, k
 
-def ADMM(u0, lambd, N, \
+def ADMM(u0, weight, N, \
               isotropic=True, channel_axis = None,
                 rho = 1, mu = 10, tau = 2, ground_truth = None, eps = 1e-6):
     """generalized ADMM for color image."""
@@ -216,7 +216,7 @@ def ADMM(u0, lambd, N, \
             tv_type = "isotropic"
         else:
             tv_type = "anisotropic"
-        out, k = ADMM_3D(u0,lambd, N, \
+        out, k = ADMM_3D(u0,weight, N, \
               tv_type = tv_type,
                 rho = rho, mu = mu, tau = tau, ground_truth = None, eps = eps, channel_axis = None)
 
@@ -226,7 +226,7 @@ def ADMM(u0, lambd, N, \
             tv_type = "isotropic"
         else:
             tv_type = "anisotropic"
-        out, k = ADMM_2D(u0,lambd, N, \
+        out, k = ADMM_2D(u0,weight, N, \
               tv_type = tv_type,
                 rho = rho, mu = mu, tau = tau, ground_truth = None, eps = eps, channel_axis = None)
     return out, k

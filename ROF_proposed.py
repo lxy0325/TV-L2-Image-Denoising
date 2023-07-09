@@ -12,8 +12,16 @@ It takes approx. 5 min to run since multiple for loops are involved.
 We do not recommend anyone to run this for the purpose of image denoising.
 """
 
-def ROFtv(u0, N=300, sigma=0.002, deltaT=1e-6, show=False, eps = 1e-6):
-    u0 = u0/255.0
+def ROFtv(u0, N=300, weight=10, deltaT=1e-6, show=False, eps = 1e-6):
+    """
+    u0: grayscale noisy image, type m*n np.array
+    weight: weight parameter between value 10-20.
+    N: max iter.
+    eps: stop iteration when np.norm(u_{i}-u_{i-1})<tol.
+    """
+    sigma = 1/weight
+
+    u0 = u0/255.0 # normalization to 0-1
     l = 0
     normValue = 0
     s = u0.shape

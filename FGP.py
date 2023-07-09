@@ -1,17 +1,33 @@
 import numpy as np
 import cv2
-from scipy.fftpack import fft2, ifft2
+# from scipy.fftpack import fft2, ifft2
 import time
-from utils.utils import D, Div, tv_norm,signaltonoise 
+from utils.utils import D, Div,signaltonoise 
 
-"""realizes algorithm proposed by:
+"""
+realizes algorithm proposed by:
+Fast Gradient-Based Algorithms for Constrained
+Total Variation Image Denoising
+and Deblurring Problems,
+Amir Beck and Marc Teboulle, 2009.
+adaptation from:
+https://github.com/Yunhui-Gao/total-variation-image-denoising
 """
 
-def FGP_gray2d(y, lambd, n_iters, tv_type='anisotropic', \
-               ground_truth = None, eps = 1e-6):
+def FGP_gray2d(image, weight, n_iters, tv_type='anisotropic', \
+               eps = 1e-6):
+    """
+    image: noisy image, type np.array
+    weight: weight parameter between value 10-20.
+    tv_type: ="isotropic" or "anisotropic".
+    n_iters: max iter.
+    eps: stop iteration when SNR_{i}-SNR_{i-1}<tol.
+    """
     # Main loop
-    y = y/255
-    lambd = 1/lambd
+    y = image/255
+    # normalize input for better results
+    lambd = 1/weight
+    # parameter definition convert
     n1, n2 = y.shape
     grad_next = np.zeros((n1, n2, 2))
     grad_prev = np.zeros((n1, n2, 2))
@@ -25,6 +41,7 @@ def FGP_gray2d(y, lambd, n_iters, tv_type='anisotropic', \
         deno = np.zeros((n1, n2, 2))
         
         if tv_type == 'anisotropic':
+            # 1 mask + gradient
             deno[:, :, 0] = np.maximum(1, np.abs(grad_next[:, :, 0]))
             deno[:, :, 1] = np.maximum(1, np.abs(grad_next[:, :, 1]))
         else:
@@ -60,12 +77,18 @@ def FGP_gray2d(y, lambd, n_iters, tv_type='anisotropic', \
     return x, i
 
 
-def FGP_color(y, lambda_val, n_iters, tv_type='anisotropic',\
-               ground_truth = None, eps = 1e-6):
-    # TODO breaking criteria
-    n1, n2, _ = y.shape
-    lambda_val = 1/lambda_val
-    y = y/255
+def FGP_color(image, weight, n_iters, tv_type='anisotropic',\
+               eps = 1e-6):
+    """
+    image: noisy image, type np.array
+    weight: weight parameter between value 10-20.
+    n_iters: max iter.
+    tv_type: ="isotropic" or "anisotropic".
+    eps: stop iteration when SNR_{i}-SNR_{i-1}<tol.
+    """
+    n1, n2, _ = image.shape
+    lambda_val = 1/weight
+    y = image/255
     grad_next = np.zeros((n1, n2, 3, 2))
     grad_prev = np.zeros((n1, n2, 3, 2))
     u = np.zeros((n1, n2, 3, 2))
@@ -157,8 +180,15 @@ def FGP_color(y, lambda_val, n_iters, tv_type='anisotropic',\
     x = y - Div(grad_next)  # convert to the primal optimal
     return x*255, i #val_lst
 
-def FGP(u0, lambda_val, n_iters, isotropic = True \
+def FGP(u0, weight, n_iters, isotropic = True \
         ,channel_axis = None, eps = 1e-10):
+    """
+    u0: noisy image, type np.array
+    weight: weight parameter between value 10-20.
+    n_iters: max iter.
+    isotropic: = True / False.
+    eps: stop iteration when SNR_{i}-SNR_{i-1}<tol.
+    """
     i = 0
     if channel_axis == True: # color image
         assert len(u0.shape)==3, "dimension mismatch"
@@ -167,7 +197,7 @@ def FGP(u0, lambda_val, n_iters, isotropic = True \
             tv_type = "isotropic"
         else:
             tv_type = "anisotropic"
-        out, i = FGP_color(u0,lambda_val, n_iters, \
+        out, i = FGP_color(u0,weight, n_iters, \
             tv_type = tv_type,
                 eps = eps)#, channel_axis = True)
 
@@ -177,7 +207,7 @@ def FGP(u0, lambda_val, n_iters, isotropic = True \
             tv_type = "isotropic"
         else:
             tv_type = "anisotropic"
-        out, i = FGP_gray2d(u0,lambda_val, n_iters, \
+        out, i = FGP_gray2d(u0,weight, n_iters, \
               tv_type = tv_type,
                 eps = eps)
     return out, i
